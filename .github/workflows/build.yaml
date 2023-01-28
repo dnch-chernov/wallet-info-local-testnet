@@ -1,0 +1,49 @@
+name: Build and Deploy
+
+on: [pull_request, push]
+
+env:
+  USDC_WALLET_PRIVATE_KEY: ${{ secrets.USDC_WALLET_PRIVATE_KEY }}
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build_and_deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18.x
+          cache: 'npm'
+      - name: Install packages
+        run: npm install -g truffle ganache
+      - name: Build contract
+        run: truffle build
+      - name: Start Ganache
+        run: ganache --wallet.accounts="$USDC_WALLET_PRIVATE_KEY, 100000000000000000000" -D --database.dbPath="db"
+      - name: Deploy contract
+        run: truffle migrate
+      - name: Log in to the Container registry
+        uses: docker/login-action@v2
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v4
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
